@@ -43,7 +43,7 @@ typedef unsigned __int64 QWORD;
 #define FF_INTDEF 2
 #include <stdint.h>
 typedef unsigned int	UINT;	/* int must be 16-bit or 32-bit */
-typedef uint8_t	BYTE;	/* char must be 8-bit */
+typedef unsigned char	BYTE;	/* char must be 8-bit */
 typedef uint16_t		WORD;	/* 16-bit unsigned integer */
 typedef uint16_t		WCHAR;	/* 16-bit unsigned integer */
 typedef uint32_t		DWORD;	/* 32-bit unsigned integer */
@@ -191,6 +191,12 @@ typedef struct {
 
 
 
+typedef struct{
+    uint32_t startSector;
+    uint32_t startByte;
+    uint32_t bytesToRead;
+} ff_readListData_t;
+
 /* File object structure (FIL) */
 
 typedef struct {
@@ -280,7 +286,7 @@ typedef enum {
 /*--------------------------------------------------------------*/
 /* FatFs module application interface                           */
 
-FRESULT f_open (FIL* fp, const TCHAR* path, BYTE mode);				/* Open or create a file */
+FIL * f_open (const TCHAR* path, BYTE mode);				/* Open or create a file */
 FRESULT f_close (FIL* fp);											/* Close an open file object */
 FRESULT f_read (FIL* fp, void* buff, UINT btr, UINT* br);			/* Read data from the file */
 FRESULT f_write (FIL* fp, const void* buff, UINT btw, UINT* bw);	/* Write data to the file */

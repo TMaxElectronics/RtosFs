@@ -11,7 +11,7 @@ extern "C" {
 
 #include "integer.h"
 #include "SPI.h"
-
+#include "DLL.h"
 
 /* Status of Disk Functions */
 typedef BYTE DSTATUS;
@@ -33,6 +33,7 @@ void    disk_setSPIHandle(SPI_HANDLE * handle);
 DSTATUS disk_initialize (BYTE drv);
 DSTATUS disk_status (BYTE pdrv);
 DRESULT disk_read (BYTE pdrv, BYTE* buff, DWORD sector, UINT count);
+DRESULT disk_readList (BYTE pdrv, BYTE* buff, DLLObject * list);
 DRESULT disk_write (BYTE pdrv, const BYTE* buff, DWORD sector, UINT count);
 DRESULT disk_ioctl (BYTE pdrv, BYTE cmd, void* buff);
 

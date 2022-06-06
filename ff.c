@@ -21,6 +21,7 @@
 
 #include "ff.h"			/* Declarations of FatFs API */
 #include "diskio.h"		/* Declarations of device I/O functions */
+#include "DLL.h"
 
 
 /*--------------------------------------------------------------------------
@@ -3456,8 +3457,8 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 )
 {
 	FRESULT res = FR_INVALID_OBJECT;
-
-
+    
+    
 	if (obj && obj->fs && obj->fs->fs_type && obj->id == obj->fs->id) {	/* Test if the object is valid */
 #if FF_FS_REENTRANT
 		if (lock_fs(obj->fs)) {	/* Obtain the filesystem object */
@@ -3542,8 +3543,7 @@ FRESULT f_mount (
 /* Open or Create a File                                                 */
 /*-----------------------------------------------------------------------*/
 
-FRESULT f_open (
-	FIL* fp,			/* Pointer to the blank file object */
+FIL * f_open (
 	const TCHAR* path,	/* Pointer to the file name */
 	BYTE mode			/* Access mode and file open mode flags */
 )
@@ -3557,8 +3557,9 @@ FRESULT f_open (
 #endif
 	DEF_NAMBUF
 
-
-	if (!fp) return FR_INVALID_OBJECT;
+    FIL * fp = ff_memalloc(sizeof(FIL));
+    memset(fp, 0, sizeof(FIL));
+	//if (!fp) return FR_INVALID_OBJECT;
 
 	/* Get logical drive number */
 	mode &= FF_FS_READONLY ? FA_READ : FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS | FA_OPEN_APPEND;
@@ -3720,9 +3721,12 @@ FRESULT f_open (
 		FREE_NAMBUF();
 	}
 
-	if (res != FR_OK) fp->obj.fs = 0;	/* Invalidate file object on error */
-
-	LEAVE_FF(fs, res);
+	if (res != FR_OK){
+        fp->obj.fs = 0;	/* Invalidate file object on error */
+        ff_memfree(fp);
+        return (FIL*) res;
+    } 
+    return fp;
 }
 
 
@@ -3822,6 +3826,100 @@ FRESULT f_read (
 	}
 
 	LEAVE_FF(fs, FR_OK);
+}
+
+/*-----------------------------------------------------------------------*/
+/* Read File directly into buffer                                        */
+/*-----------------------------------------------------------------------*/
+
+FRESULT f_fastRead (
+	FIL* fp, 	/* Pointer to the file object */
+	void* buff,	/* Pointer to data buffer */
+	UINT btr,	/* Number of bytes to read */
+	UINT* br	/* Pointer to number of bytes read */
+)
+{   
+    //if we don't have more than at most two sectors to read we may as well do a slow read
+    if(btr <= 512) return f_read(fp, buff, btr, br);
+    
+	FRESULT res;
+	FATFS *fs;
+	DWORD clst, sect;
+	FSIZE_t remain;
+	UINT rcnt, cc, csect;
+	BYTE *rbuff = (BYTE*)buff;
+
+
+	*br = 0;	/* Clear read byte counter */
+	res = validate(&fp->obj, &fs);				/* Check validity of the file object */
+	if (res != FR_OK || (res = (FRESULT)fp->err) != FR_OK) LEAVE_FF(fs, res);	/* Check validity */
+	if (!(fp->flag & FA_READ)) LEAVE_FF(fs, FR_DENIED); /* Check access mode */
+    
+    //check if we even have enough bytes left in the file
+	remain = fp->obj.objsize - fp->fptr;       
+	if (btr > remain) btr = (UINT)remain;		/* Truncate btr by remaining bytes */
+
+    //generate a cluster list
+    DLLObject * readList = DLL_create();
+    ff_readListData_t * currData = NULL;
+    
+    uint32_t bytesLeftInSector = 0;
+    uint32_t bytesLeftInCluster = 0;
+    clst = fp->clust;
+    
+    //step through the list of clusters
+    while(btr){
+        if(fp->clust != 0){
+            uint32_t sectorInCluster = (UINT)(fp->fptr / SS(fs) & (fs->csize - 1));
+            //do we have a new cluster? Is that new cluster not right after our current one?
+            if(clst != fp->clust+1){ //either we just started and have no new cluster or have a new cluster which is not directly behind the current one
+                DLL_add(currData, readList);    //add the current read to the readList, if we just started and currData==NULL it won't do anything
+                currData = ff_memalloc(sizeof(ff_readListData_t));  //allocate a new read
+                
+                //initialise new read object
+                currData->startSector = clst2sect(fs, fp->clust) + sectorInCluster; //set current sector as starting sector of readObject
+                currData->startByte = fp->fptr % SS(fs);    //set sector offset
+                currData->bytesToRead = 0; //initialise value as malloc won't do that
+            }
+            fp->clust = clst;
+
+            bytesLeftInSector = 0;
+            bytesLeftInCluster = 0;
+
+            //get to end of cluster
+            bytesLeftInCluster = ((fs->csize - sectorInCluster) * SS(fs)) - (fp->fptr % SS(fs));
+            if(bytesLeftInCluster > btr) bytesLeftInCluster = btr;
+            btr -= bytesLeftInCluster;
+            *br += bytesLeftInCluster;
+            currData->bytesToRead += bytesLeftInCluster;
+            fp->fptr += bytesLeftInCluster;
+        }
+        
+        fp->clust = clst;
+        
+        //anything left to read?
+        if(btr){ //yes
+            //new cluster started, but still bytes to read -> find next cluster
+            if (fp->fptr == 0) {			/* On the top of the file? */
+                clst = fp->obj.sclust;		/* Follow cluster chain from the origin */
+            } else {						/* Middle or end of the file */
+#if FF_USE_FASTSEEK
+                if (fp->cltbl) {
+                    clst = clmt_clust(fp, fp->fptr);	/* Get cluster# from the CLMT */
+                } else
+#endif
+                {
+                    clst = get_fat(&fp->obj, fp->clust);	/* Follow cluster chain on the FAT */
+                }
+            }
+            if (clst < 2) ABORT(fs, FR_INT_ERR);
+            if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR); //file end
+        }
+    }
+    
+    DLL_add(currData, readList); 
+    
+	LEAVE_FF(fs, disk_readList(fs->pdrv, buff, readList));
 }
 
 
@@ -4059,6 +4157,7 @@ FRESULT f_close (
 #endif
 		}
 	}
+    ff_memfree(fp);
 	return res;
 }
 
