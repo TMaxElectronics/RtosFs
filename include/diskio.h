@@ -31,6 +31,7 @@ typedef enum {
 
 void    disk_setSPIHandle(SPIHandle_t * handle);
 DSTATUS disk_initialize (BYTE drv);
+DSTATUS disk_uninitialize (BYTE drv);
 DSTATUS disk_status (BYTE pdrv);
 DRESULT disk_read (BYTE pdrv, BYTE* buff, DWORD sector, UINT count);
 DRESULT disk_readList (BYTE pdrv, BYTE* buff, DLLObject * list);

@@ -3560,8 +3560,8 @@ FIL * f_open (
 	DEF_NAMBUF
 
     FIL * fp = ff_memalloc(sizeof(FIL));
+	if (!fp) return FR_INVALID_OBJECT;
     memset(fp, 0, sizeof(FIL));
-	//if (!fp) return FR_INVALID_OBJECT;
 
 	/* Get logical drive number */
 	mode &= FF_FS_READONLY ? FA_READ : FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS | FA_OPEN_APPEND;
@@ -3722,6 +3722,11 @@ FIL * f_open (
 
 		FREE_NAMBUF();
 	}
+    
+#if FF_FS_REENTRANT
+    //release fs object
+	unlock_fs(fs, res);
+#endif
 
 	if (res != FR_OK){
         fp->obj.fs = 0;	/* Invalidate file object on error */
