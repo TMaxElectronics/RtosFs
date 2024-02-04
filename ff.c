@@ -24,6 +24,8 @@
 #include "DLL.h"
 #include "FreeRTOS.h"
 #include "semphr.h"
+#include "FS.h"
+#include "diskio.h"
 
 
 /*--------------------------------------------------------------------------
@@ -3256,7 +3258,17 @@ static FRESULT find_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 
 	fs->fs_type = 0;					/* Clear the filesystem object */
 	fs->pdrv = LD2PD(vol);				/* Bind the logical drive and a physical drive */
-	stat = disk_initialize(fs->pdrv);	/* Initialize the physical drive */
+    
+    //try calling the FS task to initialise the drive
+    if(FS_clearPowerTimeout()){
+        //success
+        stat &= ~STA_NOINIT;
+    }else{
+        //success
+        stat |= STA_NOINIT;
+    }
+	//stat = disk_initialize(fs->pdrv);	/* Initialize the physical drive */
+    
 	if (stat & STA_NOINIT) { 			/* Check if the initialization succeeded */
 		return FR_NOT_READY;			/* Failed to initialize due to no medium or hard error */
 	}
