@@ -6189,7 +6189,7 @@ FRESULT f_fdisk (
 #error Wrong FF_STRF_ENCODE setting
 #endif
 /*-----------------------------------------------------------------------*/
-/* Get a String from the File                                            */
+/* Get a String from the File    WARNING: modified from FatFs to return count of read bytes!!!                                        */
 /*-----------------------------------------------------------------------*/
 
 TCHAR* f_gets (
@@ -6241,7 +6241,11 @@ TCHAR* f_gets (
 		}
 #else	/* Read a character in UTF-8 */
 		f_read(fp, s, 1, &rc);
-		if (rc != 1) break;
+		if (rc != 1) {
+            //error occurred, terminate string at the beginning and return read bytes as 0
+            *buff = 0;
+            return 0;
+        }
 		dc = s[0];
 		if (dc >= 0x80) {	/* Multi-byte character? */
 			ct = 0;
@@ -6250,7 +6254,11 @@ TCHAR* f_gets (
 			if ((dc & 0xF8) == 0xF0) { dc &= 0x07; ct = 3; }	/* 4-byte? */
 			if (ct == 0) continue;
 			f_read(fp, s, ct, &rc);		/* Get trailing bytes */
-			if (rc != ct) break;
+			if (rc != ct) {
+                //error occurred, terminate string at the beginning and return read bytes as 0
+                *buff = 0;
+                return 0;
+            }
 			rc = 0;
 			do {	/* Merge trailing bytes */
 				if ((s[rc] & 0xC0) != 0x80) break;
@@ -6308,7 +6316,7 @@ TCHAR* f_gets (
 #endif
 
 	*p = 0;		/* Terminate the string */
-	return nc ? buff : 0;	/* When no data read due to EOF or error, return with error. */
+	return nc;	/* When no data read due to EOF or error, return with error. */
 }
 
 
